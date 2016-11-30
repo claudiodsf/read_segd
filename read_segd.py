@@ -13,6 +13,7 @@ from collections import OrderedDict
 from struct import unpack
 from array import array
 import string
+import math
 import numpy as np
 from obspy import UTCDateTime, Trace, Stream
 
@@ -45,6 +46,10 @@ _alias_filter_freq = {
     100: 4.,
     107: 4.,
     0: 0
+}
+_record_types = {
+    8: 'normal',
+    2: 'test record'
 }
 _source_types = {
     0: 'no source',
@@ -261,7 +266,10 @@ def _decode_flt(bytes):
     # zero-pad to 4 bytes
     b = chr(0)*(4-ll)
     b += bytes
-    return unpack('>f', b)[0]
+    f = unpack('>f', b)[0]
+    if math.isnan(f):
+        f = None
+    return f
 
 
 def _decode_dbl(bytes):
@@ -272,6 +280,8 @@ def _decode_dbl(bytes):
 def _decode_asc(bytes):
     """Decode ascii."""
     s = ''.join(x for x in bytes if x in string.printable)
+    if not s:
+        s = None
     return s
 
 
@@ -309,7 +319,7 @@ def _read_ghb1(fp):
     ghb1['polarity'] = _pol
     # 23L-24 : not used
     _rec_type, _rec_len = _bcd(buf[25])
-    ghb1['record_type'] = _rec_type
+    ghb1['record_type'] = _record_types[_rec_type]
     _rec_len = 0x100 * _rec_len
     _rec_len += _decode_bin(buf[26])
     if _rec_len == 0xFFF:
@@ -590,8 +600,8 @@ def _read_traceh_eb2(fp):
     traceh['receiver_point_elevation'] = _decode_flt(buf[16:20])
     traceh['sensor_type_number'] = _decode_bin(buf[20])
     # 21-23 : not used
-    traceh['DSD_identification_no'] = _decode_bin(buf[24:28])
-    traceh['extended_trace_no'] = _decode_bin(buf[28:32])
+    traceh['DSD_identification_number'] = _decode_bin(buf[24:28])
+    traceh['extended_trace_number'] = _decode_bin(buf[28:32])
     return traceh
 
 
@@ -728,6 +738,48 @@ def _build_segd_header(generalh, sch, extdh, extrh, traceh):
     segd.update(extdh)
     segd['external_header'] = extrh
     segd.update(traceh)
+    # remove fileds only useful for internal use
+    del segd['file_number']
+    del segd['extended_file_number']
+    del segd['expanded_file_number']
+    del segd['format_code']
+    del segd['bytes_per_scan']
+    del segd['extended_header_length']
+    del segd['external_header_length']
+    del segd['external_header_blocks']
+    del segd['scan_type_number']
+    del segd['channel_set_number']
+    del segd['number_of_subscans_exponent']
+    del segd['extended_channel_set_number']
+    del segd['channel_number']
+    del segd['trace_number']
+    del segd['extended_trace_number']
+    del segd['extended_header_flag']
+    del segd['number_of_channels']
+    del segd['number_of_seis_traces']
+    del segd['number_of_live_seis_traces']
+    del segd['number_of_dead_seis_traces']
+    del segd['number_of_auxes']
+    del segd['total_number_of_traces']
+    del segd['sensor_code']
+    del segd['sensor_type_number']
+    del segd['trace_header_extension']
+    del segd['trace_header_extensions']
+    del segd['max_of_max_seis']
+    del segd['max_of_max_aux']
+    # remove fields used in trace.stats
+    # or that can be evaluated from trace data
+    del segd['time']
+    del segd['sample_rate_in_us']
+    del segd['number_of_samples_in_trace']
+    del segd['number_of_samples_per_trace']
+    del segd['record_length_in_ms']
+    del segd['extended_record_length_in_ms']
+    del segd['acquisition_length_in_ms']
+    del segd['trace_max_time_in_us']
+    del segd['trace_max_value']
+    # remove None values
+    segd = {k: v for k, v in segd.iteritems() if v is not None}
     return segd
 
 
@@ -751,7 +803,10 @@ def read_segd(filename):
         sch[_sch['channel_set_number']] = _sch
     size = generalh['extended_header_length']*32
     extdh = _read_extdh(fp, size)
-    size = generalh['external_header_length']*32
+    ext_hdr_lng = generalh['external_header_length']
+    if ext_hdr_lng == 0xFF:
+        ext_hdr_lng = generalh['external_header_blocks']
+    size = ext_hdr_lng*32
     extrh = _read_extrh(fp, size)
     sample_rate = extdh['sample_rate_in_us']/1e6
     npts = extdh['number_of_samples_in_trace']
@@ -768,7 +823,7 @@ def read_segd(filename):
         tr.stats.segd = _build_segd_header(generalh, sch, extdh, extrh, traceh)
         st.append(tr)
     fp.close()
-    # for n, _sch in enumerate(sch):
+    # for n, _sch in sch.iteritems():
     #     _print_dict(_sch, '***SCH %d:' % n)
     # _print_dict(extdh, '***EXTDH:')
     # print('***EXTRH:\n %s' % extrh)
@@ -781,5 +836,7 @@ if __name__ == '__main__':
     st = read_segd(sys.argv[1])
     print st
     # for tr in st:
+    # tr = st[0]
+    # _print_dict(tr.stats.segd, '')
     #     print tr.stats
     # st.plot()
