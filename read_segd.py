@@ -146,7 +146,9 @@ _subunit_types = {
     0x22: 'DSU3BV-428',
     0x24: 'DSU1-428, long',
     0x25: 'DSU3-SA',
-    0x26: 'RAU-428'
+    0x26: 'RAU-428',
+    # sanity value:
+    0: None
 }
 _channel_types = {
     0: 'geophone',
@@ -156,7 +158,9 @@ _control_unit_types = {
     0x30: 'LAUX-428',
     0x31: 'LCI-428',
     0x50: 'RAU',
-    0x51: 'RAU-D'
+    0x51: 'RAU-D',
+    # sanity value:
+    0: None
 }
 _channel_edited_statuses = {
     0: None,
@@ -719,11 +723,14 @@ def _read_trace_data_block(fp, size):
         traceh.update(_read_traceh_eb[n](fp))
     _cgs = traceh['channel_gain_scale'] - 1
     _st = traceh['subunit_type']
-    _unit = _channel_gain_units[_st]
-    traceh['channel_gain_scale_in_' + _unit] = _channel_gain_scales[_st][_cgs]
-    del traceh['channel_gain_scale']
-    _cf = traceh['channel_filter'] - 1
-    traceh['channel_filter'] = _channel_filters[_st][_cf]
+    # sanity check against corrupted values for 'subunit_type'
+    if _st in _channel_gain_scales.keys():
+        _unit = _channel_gain_units[_st]
+        traceh['channel_gain_scale_in_' + _unit] =\
+            _channel_gain_scales[_st][_cgs]
+        del traceh['channel_gain_scale']
+        _cf = traceh['channel_filter'] - 1
+        traceh['channel_filter'] = _channel_filters[_st][_cf]
 
     data = _read_trace_data(fp, size)
     return traceh, data
