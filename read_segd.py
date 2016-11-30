@@ -311,7 +311,7 @@ def _read_ghb1(fp):
     ghb1['time'] = UTCDateTime(year=_year, julday=_jday,
                                hour=_hour, minute=_min, second=_sec)
     ghb1['manufacture_code'] = _decode_bcd(buf[16])
-    ghb1['manufacture_serial_no'] = _decode_bcd(buf[17:19])
+    ghb1['manufacture_serial_number'] = _decode_bcd(buf[17:19])
     ghb1['bytes_per_scan'] = _decode_bcd(buf[19:22])
     _bsi = _decode_bcd(buf[22])
     if _bsi < 10:
@@ -485,7 +485,7 @@ def _read_extdh(fp, size):
     extdh['record_length_in_ms'] = _decode_bin(buf[484:488])
     extdh['autocorrelation_peak_time_in_ms'] = _decode_bin(buf[488:492])
     # 492-495 : not used
-    extdh['correlation_pilot_no'] = _decode_bin(buf[496:500])
+    extdh['correlation_pilot_number'] = _decode_bin(buf[496:500])
     extdh['pilot_length_in_ms'] = _decode_bin(buf[500:504])
     extdh['sweep_length_in_ms'] = _decode_bin(buf[504:508])
     extdh['acquisition_number'] = _decode_bin(buf[508:512])
