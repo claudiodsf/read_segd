@@ -823,7 +823,7 @@ def read_segd(filename):
         traceh, data = _read_trace_data_block(fp, size)
         # _print_dict(traceh, '***TRACEH:')
         tr = Trace(data)
-        tr.stats.station = traceh['unit_serial_number']
+        tr.stats.station = str(traceh['unit_serial_number'])
         tr.stats.channel = _channel_names[traceh['sensor_code']]
         tr.stats.delta = sample_rate
         tr.stats.starttime = generalh['time']
