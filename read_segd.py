@@ -35,18 +35,6 @@ _descale_multiplier = {
     # sanity value:
     0: 1
 }
-_alias_filter_freq = {
-    1600: 0.25,
-    800: 0.5,
-    858: 0.5,
-    400: 1.,
-    429: 1.,
-    200: 2.,
-    215: 2.,
-    100: 4.,
-    107: 4.,
-    0: 0
-}
 _record_types = {
     8: 'normal',
     2: 'test record'
@@ -401,11 +389,10 @@ def _read_sch(fp):
     _nse, _cgcm = _bcd(buf[11])
     sch['number_of_subscans_exponent'] = _nse
     sch['channel_gain_control_method'] = _cgcm
-    _aff = _decode_bcd(buf[12:14])
-    sch['alias_filter_freq_-3dB_in_Hz'] = _alias_filter_freq[_aff]
-    sch['alias_filter_slope'] = _decode_bcd(buf[14:16])
-    sch['low-cut_filter_freq'] = _decode_bcd(buf[16:18])
-    sch['low-cut_filter_slope'] = _decode_bcd(buf[18:20])
+    sch['alias_filter_freq_at_-3dB_in_Hz'] = _decode_bcd(buf[12:14])
+    sch['alias_filter_slope_in_dB/octave'] = _decode_bcd(buf[14:16])
+    sch['low-cut_filter_freq_in_Hz'] = _decode_bcd(buf[16:18])
+    sch['low-cut_filter_slope_in_dB/octave'] = _decode_bcd(buf[18:20])
     sch['first_notch_freq'] = _decode_bcd(buf[20:22])
     sch['second_notch_freq'] = _decode_bcd(buf[22:24])
     sch['third_notch_freq'] = _decode_bcd(buf[24:26])
