@@ -9,6 +9,11 @@ SEG D bindings to ObsPy core module.
     GNU Lesser General Public License, Version 3
     (https://www.gnu.org/copyleft/lesser.html)
 """
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+from future.builtins import *  # NOQA
+from future.utils import native_str, PY2
+
 from collections import OrderedDict
 from struct import unpack
 from array import array
@@ -215,7 +220,8 @@ def _band_code(sample_rate):
 
 def _bcd(byte):
     """Decode 1-byte binary code decimals."""
-    if isinstance(byte, str):
+
+    if isinstance(byte, (native_str, str)):
         try:
             byte = ord(byte)
         except TypeError:
@@ -230,59 +236,78 @@ def _bcd(byte):
     return v1, v2
 
 
-def _decode_bcd(bytes):
+def _decode_bcd(bytes_in):
     """Decode arbitrary length binary code decimals."""
     v = 0
-    n = len(bytes)
+    if isinstance(bytes_in, int):
+        bytes_in = bytes([bytes_in])
+    n = len(bytes_in)
     n = n*2 - 1  # 2 values per byte
-    for byte in bytes:
+    for byte in bytes_in:
         v1, v2 = _bcd(byte)
         v += v1*10**n + v2*10**(n-1)
         n -= 2
     return v
 
 
-def _decode_bin(bytes):
+def _decode_bin(bytes_in):
     """Decode unsigned ints."""
-    ll = len(bytes)
+    if isinstance(bytes_in, int):
+        bytes_in = bytes([bytes_in])
+    ll = len(bytes_in)
     # zero-pad to 4 bytes
-    b = chr(0)*(4-ll)
-    b += bytes
+    b = (chr(0)*(4-ll)).encode()
+    b += bytes_in
     return unpack('>I', b)[0]
 
 
-def _decode_bin_bool(bytes):
+def _decode_bin_bool(bytes_in):
     """Decode unsigned ints as booleans."""
-    b = _decode_bin(bytes)
+    b = _decode_bin(bytes_in)
     return b > 0
 
 
-def _decode_fraction(bytes):
+def _decode_fraction(bytes_in):
     """Decode positive binary fractions."""
-    bit = ''.join('{:08b}'.format(ord(b)) for b in bytes)
+    if PY2:
+        # transform bytes_in to a list of ints
+        bytes_ord = map(ord, bytes_in)
+    else:
+        # in PY3 this is already the case
+        bytes_ord = bytes_in
+    bit = ''.join('{:08b}'.format(b) for b in bytes_ord)
     return sum(int(x) * 2**-n for n, x in enumerate(bit, 1))
 
 
-def _decode_flt(bytes):
+def _decode_flt(bytes_in):
     """Decode single-precision floats."""
-    ll = len(bytes)
+    if isinstance(bytes_in, int):
+        bytes_in = bytes([bytes_in])
+    ll = len(bytes_in)
     # zero-pad to 4 bytes
-    b = chr(0)*(4-ll)
-    b += bytes
+    b = (chr(0)*(4-ll)).encode()
+    b += bytes_in
     f = unpack('>f', b)[0]
     if math.isnan(f):
         f = None
     return f
 
 
-def _decode_dbl(bytes):
+def _decode_dbl(bytes_in):
     """Decode double-precision floats."""
-    return unpack('>d', bytes)[0]
+    return unpack('>d', bytes_in)[0]
 
 
-def _decode_asc(bytes):
+def _decode_asc(bytes_in):
     """Decode ascii."""
-    s = ''.join(x for x in bytes if x in string.printable)
+    if PY2:
+        # transform bytes_in to a list of ints
+        bytes_ord = map(ord, bytes_in)
+    else:
+        # in PY3 this is already the case
+        bytes_ord = bytes_in
+    printable = map(ord, string.printable)
+    s = ''.join(chr(x) for x in bytes_ord if x in printable)
     if not s:
         s = None
     return s
@@ -299,20 +324,20 @@ def _read_ghb1(fp):
                                  'is currently supported')
     ghb1['format_code'] = _decode_bcd(buf[2:4])
     ghb1['general_constants'] = [_decode_bcd(b) for b in buf[4:10]]  # unsure
-    _year = _decode_bcd(buf[10]) + 2000
+    _year = _decode_bcd(buf[10:11]) + 2000
     _nblocks, _jday = _bcd(buf[11])
     ghb1['n_additional_blocks'] = _nblocks
     _jday *= 100
-    _jday += _decode_bcd(buf[12])
-    _hour = _decode_bcd(buf[13])
-    _min = _decode_bcd(buf[14])
-    _sec = _decode_bcd(buf[15])
+    _jday += _decode_bcd(buf[12:13])
+    _hour = _decode_bcd(buf[13:14])
+    _min = _decode_bcd(buf[14:15])
+    _sec = _decode_bcd(buf[15:16])
     ghb1['time'] = UTCDateTime(year=_year, julday=_jday,
                                hour=_hour, minute=_min, second=_sec)
-    ghb1['manufacture_code'] = _decode_bcd(buf[16])
+    ghb1['manufacture_code'] = _decode_bcd(buf[16:17])
     ghb1['manufacture_serial_number'] = _decode_bcd(buf[17:19])
     ghb1['bytes_per_scan'] = _decode_bcd(buf[19:22])
-    _bsi = _decode_bcd(buf[22])
+    _bsi = _decode_bcd(buf[22:23])
     if _bsi < 10:
         _bsi = 1./_bsi
     else:
@@ -324,15 +349,15 @@ def _read_ghb1(fp):
     _rec_type, _rec_len = _bcd(buf[25])
     ghb1['record_type'] = _record_types[_rec_type]
     _rec_len = 0x100 * _rec_len
-    _rec_len += _decode_bin(buf[26])
+    _rec_len += _decode_bin(buf[26:27])
     if _rec_len == 0xFFF:
         _rec_len = None
     ghb1['record_length'] = _rec_len
-    ghb1['scan_type_per_record'] = _decode_bcd(buf[27])
-    ghb1['n_channel_sets_per_record'] = _decode_bcd(buf[28])
-    ghb1['n_sample_skew_32bit_extensions'] = _decode_bcd(buf[29])
-    ghb1['extended_header_length'] = _decode_bcd(buf[30])
-    _ehl = _decode_bcd(buf[31])
+    ghb1['scan_type_per_record'] = _decode_bcd(buf[27:28])
+    ghb1['n_channel_sets_per_record'] = _decode_bcd(buf[28:29])
+    ghb1['n_sample_skew_32bit_extensions'] = _decode_bcd(buf[29:30])
+    ghb1['extended_header_length'] = _decode_bcd(buf[30:31])
+    _ehl = _decode_bcd(buf[31:32])
     # If more than 99 External Header blocks are used,
     # then this field is set to FF and General Header block #2 (bytes 8-9)
     # indicates the number of External Header blocks.
@@ -350,13 +375,13 @@ def _read_ghb2(fp):
     # 3-6 : not used
     ghb2['external_header_blocks'] = _decode_bin(buf[7:9])
     # 9 : not used
-    _rev = ord(buf[10])
-    _rev += ord(buf[11])/10.
+    _rev = ord(buf[10:11])
+    _rev += ord(buf[11:12])/10.
     ghb2['segd_revision_number'] = _rev
     ghb2['no_blocks_of_general_trailer'] = _decode_bin(buf[12:14])
     ghb2['extended_record_length_in_ms'] = _decode_bin(buf[14:17])
     # 17 : not used
-    ghb2['general_header_block_number'] = _decode_bin(buf[18])
+    ghb2['general_header_block_number'] = _decode_bin(buf[18:19])
     # 19-32 : not used
     return ghb2
 
@@ -372,11 +397,11 @@ def _read_ghb3(fp):
     _spn = _decode_bin(buf[8:11])
     _spn += _decode_fraction(buf[11:13])
     ghb3['source_point_number'] = _spn
-    ghb3['phase_control'] = _decode_bin(buf[14])
-    ghb3['vibrator_type'] = _decode_bin(buf[15])
+    ghb3['phase_control'] = _decode_bin(buf[14:15])
+    ghb3['vibrator_type'] = _decode_bin(buf[15:16])
     ghb3['phase_angle'] = _decode_bin(buf[16:18])
-    ghb3['general_header_block_number'] = _decode_bin(buf[18])
-    ghb3['source_set_number'] = _decode_bin(buf[19])
+    ghb3['general_header_block_number'] = _decode_bin(buf[18:19])
+    ghb3['source_set_number'] = _decode_bin(buf[19:20])
     # 20-32 : not used
     return ghb3
 
@@ -385,11 +410,17 @@ def _read_sch(fp):
     """Read scan type header."""
     buf = fp.read(32)
     # check if all the bytes are zero:
-    if sum(map(ord, buf)) == 0:
+    if PY2:
+        # convert buf to a list of ints
+        _sum = sum(map(ord, buf))
+    else:
+        # in PY3 this is already the case
+        _sum = sum(buf)
+    if _sum == 0:
         raise SEGDScanTypeError('Empty scan type header')
     sch = OrderedDict()
-    sch['scan_type_header'] = _decode_bcd(buf[0])
-    sch['channel_set_number'] = _decode_bcd(buf[1])
+    sch['scan_type_header'] = _decode_bcd(buf[0:1])
+    sch['channel_set_number'] = _decode_bcd(buf[1:2])
     sch['channel_set_starting_time'] = _decode_bin(buf[2:4])
     sch['channel_set_end_time'] = _decode_bin(buf[4:6])
     _dm = _decode_bin(buf[6:8][::-1])
@@ -411,9 +442,9 @@ def _read_sch(fp):
     _ehf, _the = _bcd(buf[28])
     sch['extended_header_flag'] = _ehf
     sch['trace_header_extensions'] = _the
-    sch['vertical_stack'] = _decode_bin(buf[29])
-    sch['streamer_cable_number'] = _decode_bin(buf[30])
-    sch['array_forming'] = _decode_bin(buf[31])
+    sch['vertical_stack'] = _decode_bin(buf[29:30])
+    sch['streamer_cable_number'] = _decode_bin(buf[30:31])
+    sch['array_forming'] = _decode_bin(buf[31:32])
     return sch
 
 
@@ -475,9 +506,9 @@ def _read_extdh(fp, size):
     _top = _decode_bin(buf[140:144])
     extdh['type_of_process'] = _process_types[_top]
     extdh['acquisition_type_tables'] =\
-        [_decode_bin(buf[144+n*4:144+(n+1)*4]) for n in xrange(32)]
+        [_decode_bin(buf[144+n*4:144+(n+1)*4]) for n in range(32)]
     extdh['threshold_type_tables'] =\
-        [_decode_bin(buf[272+n*4:272+(n+1)*4]) for n in xrange(32)]
+        [_decode_bin(buf[272+n*4:272+(n+1)*4]) for n in range(32)]
     extdh['stacking_fold'] = _decode_bin(buf[400:404])
     # 404-483 : not used
     extdh['record_length_in_ms'] = _decode_bin(buf[484:488])
@@ -552,16 +583,16 @@ def _read_traceh(fp):
     if _fn == 0xFFFF:
         _fn = None
     traceh['file_number'] = _fn
-    traceh['scan_type_number'] = _decode_bcd(buf[2])
-    traceh['channel_set_number'] = _decode_bcd(buf[3])
+    traceh['scan_type_number'] = _decode_bcd(buf[2:3])
+    traceh['channel_set_number'] = _decode_bcd(buf[3:4])
     traceh['trace_number'] = _decode_bcd(buf[4:6])
     traceh['first_timing_word_in_ms'] = _decode_bin(buf[6:9]) * 1./256
-    traceh['trace_header_extension'] = _decode_bin(buf[9])
-    traceh['sample_skew'] = _decode_bin(buf[10])
-    traceh['trace_edit'] = _decode_bin(buf[11])
+    traceh['trace_header_extension'] = _decode_bin(buf[9:10])
+    traceh['sample_skew'] = _decode_bin(buf[10:11])
+    traceh['trace_edit'] = _decode_bin(buf[11:12])
     traceh['time_break_window'] = _decode_bin(buf[12:14])
-    traceh['time_break_window'] += _decode_bin(buf[14])/100.
-    traceh['extended_channel_set_number'] = _decode_bin(buf[15])
+    traceh['time_break_window'] += _decode_bin(buf[14:15])/100.
+    traceh['extended_channel_set_number'] = _decode_bin(buf[15:16])
     traceh['extended_file_number'] = _decode_bin(buf[17:20])
     return traceh
 
@@ -578,7 +609,7 @@ def _read_traceh_eb1(fp):
     if _rpn == 0xFFFFFF:
         _rpn = None
     traceh['receiver_point_number'] = _rpn
-    traceh['receiver_point_index'] = _decode_bin(buf[6])
+    traceh['receiver_point_index'] = _decode_bin(buf[6:7])
     traceh['number_of_samples_per_trace'] = _decode_bin(buf[7:10])
     _erln = _decode_bin(buf[10:13])
     _frac = _decode_fraction(buf[13:15])
@@ -586,7 +617,7 @@ def _read_traceh_eb1(fp):
     _erpn = _decode_bin(buf[15:18])
     _frac = _decode_fraction(buf[18:20])
     traceh['extended_receiver_point_number'] = _erpn + _frac
-    _sensor_code = _decode_bin(buf[20])
+    _sensor_code = _decode_bin(buf[20:21])
     traceh['sensor_code'] = _sensor_code  # not in spec: for internal use
     traceh['sensor_type'] = _sensor_types[_sensor_code]
     # 21-31 : not used
@@ -600,7 +631,7 @@ def _read_traceh_eb2(fp):
     traceh['receiver_point_easting'] = _decode_dbl(buf[0:8])
     traceh['receiver_point_northing'] = _decode_dbl(buf[8:16])
     traceh['receiver_point_elevation'] = _decode_flt(buf[16:20])
-    traceh['sensor_type_number'] = _decode_bin(buf[20])
+    traceh['sensor_type_number'] = _decode_bin(buf[20:21])
     # 21-23 : not used
     traceh['DSD_identification_number'] = _decode_bin(buf[24:28])
     traceh['extended_trace_number'] = _decode_bin(buf[28:32])
@@ -616,8 +647,8 @@ def _read_traceh_eb3(fp):
     traceh['resistance_calue_in_ohms'] = _decode_flt(buf[8:12])
     traceh['tilt_limit'] = _decode_flt(buf[12:16])
     traceh['tilt_value'] = _decode_flt(buf[16:20])
-    traceh['resistance_error'] = _decode_bin_bool(buf[20])
-    traceh['tilt_error'] = _decode_bin_bool(buf[21])
+    traceh['resistance_error'] = _decode_bin_bool(buf[20:21])
+    traceh['tilt_error'] = _decode_bin_bool(buf[21:22])
     # 22-31 : not used
     return traceh
 
@@ -632,8 +663,8 @@ def _read_traceh_eb4(fp):
     traceh['cutoff_low_limit'] = _decode_flt(buf[12:16])
     traceh['cutoff_high_limit'] = _decode_flt(buf[16:20])
     traceh['cutoff_value_in_Hz'] = _decode_flt(buf[20:24])
-    traceh['capacitance_error'] = _decode_bin_bool(buf[24])
-    traceh['cutoff_error'] = _decode_bin_bool(buf[25])
+    traceh['capacitance_error'] = _decode_bin_bool(buf[24:25])
+    traceh['cutoff_error'] = _decode_bin_bool(buf[25:26])
     # 26-31 : not used
     return traceh
 
@@ -646,7 +677,7 @@ def _read_traceh_eb5(fp):
     traceh['leakage_value_in_megahoms'] = _decode_flt(buf[4:8])
     traceh['instrument_longitude'] = _decode_dbl(buf[8:16])
     traceh['instrument_latitude'] = _decode_dbl(buf[16:24])
-    traceh['leakage_error'] = _decode_bin_bool(buf[24])
+    traceh['leakage_error'] = _decode_bin_bool(buf[24:25])
     traceh['instrument_horizontal_position_accuracy_in_mm'] = \
         _decode_bin(buf[25:28])
     traceh['instrument_elevation_in_mm'] = _decode_flt(buf[28:32])
@@ -657,18 +688,18 @@ def _read_traceh_eb6(fp):
     """Read trace header extension block #6, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    _ut = _decode_bin(buf[0])
+    _ut = _decode_bin(buf[0:1])
     traceh['unit_type'] = _unit_types[_ut]
     traceh['unit_serial_number'] = _decode_bin(buf[1:4])
-    traceh['channel_number'] = _decode_bin(buf[4])
+    traceh['channel_number'] = _decode_bin(buf[4:5])
     # 5-7 : not used
-    traceh['assembly_type'] = _decode_bin(buf[8])
+    traceh['assembly_type'] = _decode_bin(buf[8:9])
     traceh['assembly_serial_number'] = _decode_bin(buf[9:12])
-    traceh['location_in_assembly'] = _decode_bin(buf[12])
+    traceh['location_in_assembly'] = _decode_bin(buf[12:13])
     # 13-15 : not used
-    _st = _decode_bin(buf[16])
+    _st = _decode_bin(buf[16:17])
     traceh['subunit_type'] = _subunit_types[_st]
-    _ct = _decode_bin(buf[17])
+    _ct = _decode_bin(buf[17:18])
     traceh['channel_type'] = _channel_types[_ct]
     # 18-19 : not used
     traceh['sensor_sensitivity_in_mV/m/s/s'] = _decode_flt(buf[20:24])
@@ -680,21 +711,21 @@ def _read_traceh_eb7(fp):
     """Read trace header extension block #7, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    _cut = _decode_bin(buf[0])
+    _cut = _decode_bin(buf[0:1])
     traceh['control_unit_type'] = _control_unit_types[_cut]
     traceh['control_unit_serial_number'] = _decode_bin(buf[1:4])
-    traceh['channel_gain_scale'] = _decode_bin(buf[4])
-    traceh['channel_filter'] = _decode_bin(buf[5])
-    traceh['channel_data_error_overscaling'] = _decode_bin(buf[6])
-    _ces = _decode_bin(buf[7])
+    traceh['channel_gain_scale'] = _decode_bin(buf[4:5])
+    traceh['channel_filter'] = _decode_bin(buf[5:6])
+    traceh['channel_data_error_overscaling'] = _decode_bin(buf[6:7])
+    _ces = _decode_bin(buf[7:8])
     traceh['channel_edited_status'] = _channel_edited_statuses[_ces]
     traceh['channel_sample_to_mV_conversion_factor'] = _decode_flt(buf[8:12])
-    traceh['number_of_stacks_noisy'] = _decode_bin(buf[12])
-    traceh['number_of_stacks_low'] = _decode_bin(buf[13])
+    traceh['number_of_stacks_noisy'] = _decode_bin(buf[12:13])
+    traceh['number_of_stacks_low'] = _decode_bin(buf[13:14])
     _channel_type_ids = {1: 'seis', 9: 'aux'}
-    _cti = _decode_bin(buf[14])
+    _cti = _decode_bin(buf[14:15])
     traceh['channel_type_id'] = _channel_type_ids[_cti]
-    _cp = _decode_bin(buf[15])
+    _cp = _decode_bin(buf[15:16])
     traceh['channel_process'] = _channel_processes[_cp]
     traceh['trace_max_value'] = _decode_flt(buf[16:20])
     traceh['trace_max_time_in_us'] = _decode_bin(buf[20:24])
@@ -705,9 +736,14 @@ def _read_traceh_eb7(fp):
 
 def _read_trace_data(fp, size):
     buf = array('f')
-    buf.fromfile(fp, size)
+    # buf.fromfile(fp, size) doesn't work with py2
+    buf.fromstring(fp.read(size*4))
     buf.byteswap()
-    return np.array(buf)
+    buf = np.array(buf, dtype=np.float32)
+    # check if we can convert to int
+    if np.all(np.mod(buf, 1) == 0):
+        buf = buf.astype(np.int32)
+    return buf
 
 
 def _read_trace_data_block(fp, size):
@@ -735,7 +771,6 @@ def _read_trace_data_block(fp, size):
 
 
 def _build_segd_header(generalh, sch, extdh, extrh, traceh):
-    # TODO: remove unnecessary or empty header fields
     segd = OrderedDict()
     segd.update(generalh)
     channel_set_number = traceh['channel_set_number']
@@ -784,7 +819,7 @@ def _build_segd_header(generalh, sch, extdh, extrh, traceh):
     del segd['trace_max_time_in_us']
     del segd['trace_max_value']
     # remove None values
-    segd = {k: v for k, v in segd.iteritems() if v is not None}
+    segd = {k: v for k, v in segd.items() if v is not None}
     return segd
 
 
@@ -840,7 +875,8 @@ def read_segd(filename):
 if __name__ == '__main__':
     import sys
     st = read_segd(sys.argv[1])
-    print st
+    print(st)
+    st.write('test.mseed', format='MSEED')
     # for tr in st:
     # tr = st[0]
     # _print_dict(tr.stats.segd, '')
