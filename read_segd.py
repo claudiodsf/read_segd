@@ -186,20 +186,31 @@ _channel_filters = {
     'RAU': ('0.9FN minimum phase', '0.9FN linear phase')
 }
 
-
-# channel names matching sensor types
-_channel_names = {
+# instrument and orientation codes matching sensor types
+_instrument_orientation_code = {
     0: '',  # not defined
-    1: 'HDH',  # hydrophone
-    2: 'HLZ',  # geophone, vertical
-    3: 'HL1',  # geophone, horizontal, in-line
-    4: 'HL2',  # geophone, horizontal, crossline
-    5: 'HL3',  # geophone, horizontal, other
-    6: 'HNZ',  # accelerometer, vertical
-    7: 'HN1',  # accelerometer, horizontal, in-line
-    8: 'HN2',  # accelerometer, horizontal, crossline
-    9: 'HN3'   # accelerometer, horizontal, other
+    1: 'DH',  # hydrophone
+    2: 'HZ',  # geophone, vertical
+    3: 'H1',  # geophone, horizontal, in-line
+    4: 'H2',  # geophone, horizontal, crossline
+    5: 'H3',  # geophone, horizontal, other
+    6: 'NZ',  # accelerometer, vertical
+    7: 'N1',  # accelerometer, horizontal, in-line
+    8: 'N2',  # accelerometer, horizontal, crossline
+    9: 'N3'   # accelerometer, horizontal, other
 }
+
+
+# band codes matching sample rate, for a short-period instrument
+def _band_code(sample_rate):
+    if sample_rate >= 1000:
+        return 'G'
+    if sample_rate >= 250:
+        return 'D'
+    if sample_rate >= 80:
+        return 'E'
+    if sample_rate >= 10:
+        return 'S'
 
 
 def _bcd(byte):
@@ -811,7 +822,8 @@ def read_segd(filename):
         # _print_dict(traceh, '***TRACEH:')
         tr = Trace(data)
         tr.stats.station = str(traceh['unit_serial_number'])
-        tr.stats.channel = _channel_names[traceh['sensor_code']]
+        tr.stats.channel = _band_code(1./sample_rate)
+        tr.stats.channel += _instrument_orientation_code[traceh['sensor_code']]
         tr.stats.delta = sample_rate
         tr.stats.starttime = generalh['time']
         tr.stats.segd = _build_segd_header(generalh, sch, extdh, extrh, traceh)
