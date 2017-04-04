@@ -742,9 +742,6 @@ def _read_trace_data(fp, size):
     buf.fromstring(fp.read(size*4))
     buf.byteswap()
     buf = np.array(buf, dtype=np.float32)
-    # check if we can convert to int
-    if np.all(np.mod(buf, 1) == 0):
-        buf = buf.astype(np.int32)
     return buf
 
 
@@ -854,8 +851,11 @@ def read_segd(filename):
     npts = extdh['number_of_samples_in_trace']
     size = npts
     st = Stream()
+    convert_to_int = True
     for n in range(extdh['total_number_of_traces']):
         traceh, data = _read_trace_data_block(fp, size)
+        # check if all traces can be converted to int
+        convert_to_int = convert_to_int and np.all(np.mod(data, 1) == 0)
         # _print_dict(traceh, '***TRACEH:')
         tr = Trace(data)
         tr.stats.station = str(traceh['unit_serial_number'])
@@ -871,6 +871,9 @@ def read_segd(filename):
     # _print_dict(extdh, '***EXTDH:')
     # print('***EXTRH:\n %s' % extrh)
     # _print_dict(generalh, '***GENERALH:')
+    if convert_to_int:
+        for tr in st:
+            tr.data = tr.data.astype(np.int32)
     return st
 
 
