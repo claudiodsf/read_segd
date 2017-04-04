@@ -153,7 +153,9 @@ _control_unit_types = {
     0x50: 'RAU',
     0x51: 'RAU-D',
     # sanity value:
-    0: None
+    0: None,
+    # other values found in files, but not documented:
+    0x06: None
 }
 _channel_edited_statuses = {
     0: None,
