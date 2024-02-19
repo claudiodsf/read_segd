@@ -9,11 +9,6 @@ SEG D bindings to ObsPy core module.
     GNU Lesser General Public License, Version 3
     (https://www.gnu.org/copyleft/lesser.html)
 """
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-from future.builtins import *  # NOQA
-from future.utils import native_str, PY2
-
 from collections import OrderedDict
 from struct import unpack
 from array import array
@@ -24,11 +19,11 @@ from obspy import UTCDateTime, Trace, Stream
 
 
 class SEGDNotImplemented(Exception):
-    pass
+    """Exception for not implemented features."""
 
 
 class SEGDScanTypeError(Exception):
-    pass
+    """Exception for empty scan type headers."""
 
 
 # Code tables (SERCEL format)
@@ -222,12 +217,11 @@ def _band_code(sample_rate):
 
 def _bcd(byte):
     """Decode 1-byte binary code decimals."""
-
-    if isinstance(byte, (native_str, str)):
+    if isinstance(byte, str):
         try:
             byte = ord(byte)
-        except TypeError:
-            raise ValueError('not a byte')
+        except TypeError as e:
+            raise ValueError('not a byte') from e
     elif isinstance(byte, int):
         if byte > 255:
             raise ValueError('not a byte')
@@ -271,13 +265,7 @@ def _decode_bin_bool(bytes_in):
 
 def _decode_fraction(bytes_in):
     """Decode positive binary fractions."""
-    if PY2:
-        # transform bytes_in to a list of ints
-        bytes_ord = map(ord, bytes_in)
-    else:
-        # in PY3 this is already the case
-        bytes_ord = bytes_in
-    bit = ''.join('{:08b}'.format(b) for b in bytes_ord)
+    bit = ''.join(f'{b:08b}' for b in bytes_in)
     return sum(int(x) * 2**-n for n, x in enumerate(bit, 1))
 
 
@@ -302,24 +290,15 @@ def _decode_dbl(bytes_in):
 
 def _decode_asc(bytes_in):
     """Decode ascii."""
-    if PY2:
-        # transform bytes_in to a list of ints
-        bytes_ord = map(ord, bytes_in)
-    else:
-        # in PY3 this is already the case
-        bytes_ord = bytes_in
     printable = map(ord, string.printable)
-    s = ''.join(chr(x) for x in bytes_ord if x in printable)
-    if not s:
-        s = None
-    return s
+    return ''.join(chr(x) for x in bytes_in if x in printable) or None
 
 
 def _read_ghb1(fp):
     """Read general header block #1."""
     buf = fp.read(32)
     ghb1 = OrderedDict()
-    ghb1['file_number'] = _decode_bcd(buf[0:2])
+    ghb1['file_number'] = _decode_bcd(buf[:2])
     _format_code = _decode_bcd(buf[2:4])
     if _format_code != 8058:
         raise SEGDNotImplemented('Only 32 bit IEEE demultiplexed data '
@@ -373,7 +352,7 @@ def _read_ghb2(fp):
     """Read general header block #2."""
     buf = fp.read(32)
     ghb2 = OrderedDict()
-    ghb2['expanded_file_number'] = _decode_bin(buf[0:3])
+    ghb2['expanded_file_number'] = _decode_bin(buf[:3])
     # 3-6 : not used
     ghb2['external_header_blocks'] = _decode_bin(buf[7:9])
     # 9 : not used
@@ -392,7 +371,7 @@ def _read_ghb3(fp):
     """Read general header block #3."""
     buf = fp.read(32)
     ghb3 = OrderedDict()
-    ghb3['expanded_file_number'] = _decode_bin(buf[0:3])
+    ghb3['expanded_file_number'] = _decode_bin(buf[:3])
     _sln = _decode_bin(buf[3:6])
     _sln += _decode_fraction(buf[6:8])
     ghb3['source_line_number'] = _sln
@@ -412,16 +391,10 @@ def _read_sch(fp):
     """Read scan type header."""
     buf = fp.read(32)
     # check if all the bytes are zero:
-    if PY2:
-        # convert buf to a list of ints
-        _sum = sum(map(ord, buf))
-    else:
-        # in PY3 this is already the case
-        _sum = sum(buf)
-    if _sum == 0:
+    if sum(buf) == 0:
         raise SEGDScanTypeError('Empty scan type header')
     sch = OrderedDict()
-    sch['scan_type_header'] = _decode_bcd(buf[0:1])
+    sch['scan_type_header'] = _decode_bcd(buf[:1])
     sch['channel_set_number'] = _decode_bcd(buf[1:2])
     sch['channel_set_starting_time'] = _decode_bin(buf[2:4])
     sch['channel_set_end_time'] = _decode_bin(buf[4:6])
@@ -455,7 +428,7 @@ def _read_extdh(fp, size):
     buf = fp.read(size)
     extdh = OrderedDict()
     # SERCEL extended header format
-    extdh['acquisition_length_in_ms'] = _decode_bin(buf[0:4])
+    extdh['acquisition_length_in_ms'] = _decode_bin(buf[:4])
     extdh['sample_rate_in_us'] = _decode_bin(buf[4:8])
     extdh['total_number_of_traces'] = _decode_bin(buf[8:12])
     extdh['number_of_auxes'] = _decode_bin(buf[12:16])
@@ -581,7 +554,7 @@ def _read_traceh(fp):
     """Read trace header."""
     buf = fp.read(20)
     traceh = OrderedDict()
-    _fn = _decode_bcd(buf[0:2])
+    _fn = _decode_bcd(buf[:2])
     if _fn == 0xFFFF:
         _fn = None
     traceh['file_number'] = _fn
@@ -603,7 +576,7 @@ def _read_traceh_eb1(fp):
     """Read trace header extension block #1, SEGD standard."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    _rln = _decode_bin(buf[0:3])
+    _rln = _decode_bin(buf[:3])
     if _rln == 0xFFFFFF:
         _rln = None
     traceh['receiver_line_number'] = _rln
@@ -630,7 +603,7 @@ def _read_traceh_eb2(fp):
     """Read trace header extension block #2, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    traceh['receiver_point_easting'] = _decode_dbl(buf[0:8])
+    traceh['receiver_point_easting'] = _decode_dbl(buf[:8])
     traceh['receiver_point_northing'] = _decode_dbl(buf[8:16])
     traceh['receiver_point_elevation'] = _decode_flt(buf[16:20])
     traceh['sensor_type_number'] = _decode_bin(buf[20:21])
@@ -644,7 +617,7 @@ def _read_traceh_eb3(fp):
     """Read trace header extension block #3, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    traceh['resistance_low_limit'] = _decode_flt(buf[0:4])
+    traceh['resistance_low_limit'] = _decode_flt(buf[:4])
     traceh['resistance_high_limit'] = _decode_flt(buf[4:8])
     traceh['resistance_calue_in_ohms'] = _decode_flt(buf[8:12])
     traceh['tilt_limit'] = _decode_flt(buf[12:16])
@@ -659,7 +632,7 @@ def _read_traceh_eb4(fp):
     """Read trace header extension block #4, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    traceh['capacitance_low_limit'] = _decode_flt(buf[0:4])
+    traceh['capacitance_low_limit'] = _decode_flt(buf[:4])
     traceh['capacitance_high_limit'] = _decode_flt(buf[4:8])
     traceh['capacitance_value_in_nano_farads'] = _decode_flt(buf[8:12])
     traceh['cutoff_low_limit'] = _decode_flt(buf[12:16])
@@ -675,7 +648,7 @@ def _read_traceh_eb5(fp):
     """Read trace header extension block #5, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    traceh['leakage_limit'] = _decode_flt(buf[0:4])
+    traceh['leakage_limit'] = _decode_flt(buf[:4])
     traceh['leakage_value_in_megahoms'] = _decode_flt(buf[4:8])
     traceh['instrument_longitude'] = _decode_dbl(buf[8:16])
     traceh['instrument_latitude'] = _decode_dbl(buf[16:24])
@@ -690,7 +663,7 @@ def _read_traceh_eb6(fp):
     """Read trace header extension block #6, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    _ut = _decode_bin(buf[0:1])
+    _ut = _decode_bin(buf[:1])
     traceh['unit_type'] = _unit_types[_ut]
     traceh['unit_serial_number'] = _decode_bin(buf[1:4])
     traceh['channel_number'] = _decode_bin(buf[4:5])
@@ -713,7 +686,7 @@ def _read_traceh_eb7(fp):
     """Read trace header extension block #7, SERCEL format."""
     buf = fp.read(32)
     traceh = OrderedDict()
-    _cut = _decode_bin(buf[0:1])
+    _cut = _decode_bin(buf[:1])
     traceh['control_unit_type'] = _control_unit_types[_cut]
     traceh['control_unit_serial_number'] = _decode_bin(buf[1:4])
     traceh['channel_gain_scale'] = _decode_bin(buf[4:5])
@@ -738,8 +711,7 @@ def _read_traceh_eb7(fp):
 
 def _read_trace_data(fp, size):
     buf = array('f')
-    # buf.fromfile(fp, size) doesn't work with py2
-    buf.fromstring(fp.read(size*4))
+    buf.frombytes(fp.read(size*4))
     buf.byteswap()
     buf = np.array(buf, dtype=np.float32)
     return buf
@@ -757,14 +729,12 @@ def _read_trace_data_block(fp, size):
     _cgs = traceh['channel_gain_scale'] - 1
     _st = traceh['subunit_type']
     # sanity check against corrupted values for 'subunit_type'
-    if _st in _channel_gain_scales.keys():
+    if _st in _channel_gain_scales:
         _unit = _channel_gain_units[_st]
-        traceh['channel_gain_scale_in_' + _unit] =\
-            _channel_gain_scales[_st][_cgs]
+        traceh[f'channel_gain_scale_in_{_unit}'] = _channel_gain_scales[_st][_cgs]
         del traceh['channel_gain_scale']
         _cf = traceh['channel_filter'] - 1
         traceh['channel_filter'] = _channel_filters[_st][_cf]
-
     data = _read_trace_data(fp, size)
     return traceh, data
 
@@ -822,19 +792,14 @@ def _build_segd_header(generalh, sch, extdh, extrh, traceh):
     return segd
 
 
-# def _print_dict(dict, title):
-#     print(title)
-#     for key, val in dict.iteritems():
-#         print('{}: {}'.format(key, val))
-
-
 def read_segd(filename):
+    """Read a SEGD file."""
     fp = open(filename, 'rb')
     generalh = _read_ghb1(fp)
     generalh.update(_read_ghb2(fp))
     generalh.update(_read_ghb3(fp))
     sch = {}
-    for n in range(generalh['n_channel_sets_per_record']):
+    for _ in range(generalh['n_channel_sets_per_record']):
         try:
             _sch = _read_sch(fp)
         except SEGDScanTypeError:
@@ -852,7 +817,7 @@ def read_segd(filename):
     size = npts
     st = Stream()
     convert_to_int = True
-    for n in range(extdh['total_number_of_traces']):
+    for _ in range(extdh['total_number_of_traces']):
         traceh, data = _read_trace_data_block(fp, size)
         # check if all traces can be converted to int
         convert_to_int = convert_to_int and np.all(np.mod(data, 1) == 0)
@@ -877,7 +842,7 @@ def read_segd(filename):
     return st
 
 
-if __name__ == '__main__':
+def main():
     import sys
     st = read_segd(sys.argv[1])
     print(st)
@@ -887,3 +852,7 @@ if __name__ == '__main__':
     # _print_dict(tr.stats.segd, '')
     #     print tr.stats
     # st.plot()
+
+
+if __name__ == '__main__':
+    main()
