@@ -843,15 +843,29 @@ def read_segd(filename):
 
 
 def main():
-    import sys
-    st = read_segd(sys.argv[1])
-    print(st)
-    st.write('test.mseed', format='MSEED')
-    # for tr in st:
-    # tr = st[0]
-    # _print_dict(tr.stats.segd, '')
-    #     print tr.stats
-    # st.plot()
+    """Read a SEGD file."""
+    import os
+    from argparse import ArgumentParser
+    parser = ArgumentParser(description='Read a SEGD file')
+    parser.add_argument('filename', help='SEGD file to read')
+    parser.add_argument(
+        '-f', '--format', default='MSEED',
+        choices=['MSEED', 'SAC'],
+        help='output format (MSEED or SAC)',
+    )
+    args = parser.parse_args()
+    st = read_segd(args.filename)
+    # remove extension from filename
+    args.filename = os.path.splitext(args.filename)[0]
+    if args.format == 'MSEED':
+        outfile = f'{args.filename}.{args.format.lower()}'
+    else:
+        outfile = f'{args.filename}..sac'
+    st.write(outfile, format=args.format)
+    if args.format == 'MSEED':
+        print(f'Wrote {len(st)} traces to {outfile}')
+    else:
+        print(f'Wrote {len(st)} traces to {args.filename}.*.sac')
 
 
 if __name__ == '__main__':
